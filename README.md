@@ -1,716 +1,721 @@
-# Ubuntu VPS-এ 3X-UI ইনস্টলেশন গাইড (শুরু থেকে শেষ)
+# Ubuntu 24.04 VPS-এ 3X-UI Installation Guide (বাংলা)
 
-এই README-তে একটি নতুন Ubuntu 24.04 LTS VPS-এ SSH দিয়ে লগইন, প্রাথমিক সিকিউরিটি, SSH port `22022`, Firewall, 3X-UI ইনস্টলেশন, IP-ভিত্তিক Admin Panel ও Subscription সেটআপ এবং সাধারণ Error সমাধানের ধাপ দেওয়া হয়েছে।
+**শুরু থেকে শেষ পর্যন্ত Setup, Firewall, SSH Security, IP-Based Admin Panel,
+Subscription, VPN Inbound, DNS Fix এবং Troubleshooting Guide।**
 
-**এই গাইডের লক্ষ্য:**
-- কোনো Domain ব্যবহার করা হবে না।
-- Admin Panel সরাসরি VPS-এর Public IP দিয়ে খোলা হবে।
-- Client Subscription URL-এও VPS-এর Public IP থাকবে।
-- Nginx, Certbot বা Domain SSL প্রয়োজন হবে না।
-- প্রতিটি Client-এর নিজস্ব Subscription Token থাকবে।
+এই গাইডটি নতুন Ubuntu 24.04 LTS VPS-এর জন্য। প্রতিটি ধাপ মনোযোগ দিয়ে অনুসরণ
+করুন। VPS Provider, 3X-UI Version এবং VPN Protocol অনুযায়ী কিছু সেটিংস
+আলাদা হতে পারে।
 
-> **গুরুত্বপূর্ণ:** কমান্ডগুলো নতুন Ubuntu 24.04 VPS-এর জন্য। আগে থেকে ব্যবহৃত সার্ভারে চালালে বিদ্যমান কনফিগারেশন নষ্ট হতে পারে। নতুন VPS হলে Provider Dashboard থেকে Ubuntu 24.04 LTS Reinstall করুন। Reinstall করলে সার্ভারের পুরোনো ডেটা মুছে যাবে।
-
----
+> **গুরুত্বপূর্ণ নিরাপত্তা নোট:** এই গাইডে IP-ভিত্তিক HTTP Panel ও
+> Subscription-এর উদাহরণ দেওয়া হয়েছে। HTTP-তে Username, Password ও
+> Subscription Data এনক্রিপ্টেড থাকে না। নিরাপত্তা গুরুত্বপূর্ণ হলে HTTPS/TLS
+> ব্যবহার করুন অথবা Admin Panel-এ SSH Tunnel দিয়ে প্রবেশ করুন।
 
 ## সূচিপত্র
 
-1. VPS প্রস্তুতি
-2. প্রয়োজনীয় তথ্য
-3. SSH দিয়ে প্রথম Login
-4. Ubuntu Update
-5. SSH Port `22022` সেট করা
-6. Firewall চালু করা
-7. 3X-UI Install
-8. Admin Panel Settings
-9. IP দিয়ে Admin Panel খোলা
-10. Subscription Settings
-11. Client তৈরি ও Subscription পরীক্ষা
-12. দরকারি Management Commands
-13. Error Troubleshooting
+1.  VPS প্রস্তুতি
+2.  SSH দিয়ে Login
+3.  Ubuntu Update
+4.  SSH Port 22022
+5.  UFW ও Provider Firewall
+6.  3X-UI Install
+7.  Admin Panel
+8.  Subscription Settings
+9.  VPN Inbound
+10. Client ও Subscription পরীক্ষা
+11. DNS Fix
+12. Troubleshooting
+13. Management Commands
 14. Backup ও Security
-15. Final Checklist
+15. TZ VPN App
+16. Final Checklist
 
----
+------------------------------------------------------------------------
 
 ## ১. VPS প্রস্তুতি
 
-VPS Provider থেকে নতুন Server তৈরি করুন।
+VPS Provider থেকে Ubuntu 24.04 LTS 64-bit Server তৈরি করুন। Provider
+Dashboard থেকে সংগ্রহ করুন:
 
-প্রস্তাবিত:
-- OS: Ubuntu 24.04 LTS 64-bit
-- RAM: প্রয়োজন অনুযায়ী (ছোট পরীক্ষার জন্য 1–2 GB হতে পারে; ব্যবহারকারীর সংখ্যা ও ট্রাফিক অনুযায়ী বেশি লাগতে পারে)
-- Root access
-- Public IPv4 address
+  বিষয়                উদাহরণ
+  ------------------- --------------------------------------
+  Server IP           `YOUR_SERVER_IP`
+  SSH Username        `root`
+  Initial SSH Port    `22` (Provider অনুযায়ী ভিন্ন হতে পারে)
+  নতুন SSH Port        `22022`
+  Admin Panel Port    `2053` (উদাহরণ)
+  Subscription Port   `2096` (উদাহরণ)
+  VPN Inbound Port    নিজের Inbound অনুযায়ী
 
-Provider Dashboard থেকে নিচের তথ্য সংগ্রহ করুন:
+`YOUR_SERVER_IP`-এর জায়গায় নিজের VPS-এর Public IP বসাবেন।
+`203.0.113.10`-এর মতো ডকুমেন্টেশন IP বাস্তব সার্ভারের IP নয়---নিজের IP
+ব্যবহার করুন।
 
-| তথ্য | উদাহরণ |
-|---|---|
-| Server IP | `YOUR_SERVER_IP` |
-| Initial SSH port | `22` (Provider অনুযায়ী আলাদা হতে পারে) |
-| SSH username | `root` |
-| New SSH port | `22022` |
-| Admin Panel port | `2053` |
-| Subscription port | `2096` |
+> নতুন করে OS Reinstall করলে পুরোনো সার্ভারের ডেটা মুছে যেতে পারে। প্রয়োজনীয়
+> Backup আগে নিন।
 
-**Provider Firewall / Security Group-এ** শুরুতেই Initial SSH port অনুমোদিত রাখুন। পরে `22022` যোগ করবেন। Panel, Subscription এবং Xray Inbound-এর প্রয়োজনীয় TCP/UDP port-ও Provider Firewall-এ খুলতে হবে।
+## ২. SSH দিয়ে প্রথম Login
 
----
+নিজের কম্পিউটারে Terminal / PowerShell খুলুন:
 
-## ২. নিজের তথ্য বসান
-
-এই গাইডে `YOUR_SERVER_IP` লেখা থাকলে সেটির জায়গায় নিজের VPS-এর Public IP বসাবেন।
-
-উদাহরণ:
-```text
-YOUR_SERVER_IP = 203.0.113.10
-```
-
-`203.0.113.10` শুধু উদাহরণ IP; নিজের সার্ভারের IP ব্যবহার করবেন।
-
----
-
-## ৩. SSH দিয়ে প্রথম Login
-
-নিজের কম্পিউটারের Terminal / PowerShell / Windows Terminal খুলুন:
-
-```bash
+``` bash
 ssh root@YOUR_SERVER_IP
 ```
 
-যদি Provider অন্য SSH port দিয়ে থাকে:
+Provider-এর SSH Port 22 না হলে:
 
-```bash
+``` bash
 ssh -p INITIAL_SSH_PORT root@YOUR_SERVER_IP
 ```
 
-প্রথমবার সংযোগ করলে host authenticity confirmation এলে যাচাই করে `yes` লিখুন। এরপর VPS-এর root password দিন। Password টাইপ করার সময় স্ক্রিনে অক্ষর দেখা যাবে না—এটাই স্বাভাবিক।
+Login-এর পর যাচাই করুন:
 
-Login সফল হলে সাধারণত এমন Prompt দেখবেন:
-
-```text
-root@server:~#
-```
-
-Server-এর তথ্য যাচাই:
-
-```bash
+``` bash
 whoami
 hostname
 hostname -I
-ip -4 addr
 ```
 
 `whoami`-এর ফলাফল `root` হওয়া উচিত।
 
----
+## ৩. Ubuntu Update ও প্রয়োজনীয় Package
 
-## ৪. Ubuntu Update এবং প্রয়োজনীয় Package
-
-```bash
+``` bash
 apt update
 apt -y full-upgrade
-apt -y install curl wget ca-certificates gnupg nano sudo ufw fail2ban
-```
-
-সময় UTC করা:
-
-```bash
+apt -y install curl wget nano sudo ufw fail2ban ca-certificates sqlite3
 timedatectl set-timezone UTC
 timedatectl
 ```
 
-Kernel update হয়ে থাকলে:
+Kernel Update-এর কারণে Reboot প্রয়োজন হলে:
 
-```bash
+``` bash
 reboot
 ```
 
-Reboot-এর পর আবার Initial SSH port দিয়ে Login করুন।
+Server চালু হলে আবার SSH দিয়ে Login করুন।
 
----
+## ৪. SSH Port 22022 Configure
 
-## ৫. SSH Port `22022` সেট করা
+**সতর্কতা:** Provider Firewall-এ আগে `22022/TCP` Allow করুন। বর্তমান SSH
+Session বন্ধ করবেন না। নতুন Port দিয়ে Login পরীক্ষা না করে পুরোনো Port বন্ধ
+করবেন না।
 
-**সতর্কতা:** এই ধাপ ভুল হলে SSH Login বন্ধ হয়ে যেতে পারে। বর্তমান SSH Session বন্ধ করবেন না। Provider Firewall-এ আগে `22022/TCP` অনুমোদন করুন।
+প্রথমে UFW-তে নতুন ও পুরোনো SSH Port Allow করুন:
 
-প্রথমে UFW-তে নতুন SSH port অনুমোদন:
-
-```bash
+``` bash
 ufw allow 22022/tcp
+ufw allow 22/tcp
 ```
 
-SSH configuration backup:
+SSH Configuration Backup:
 
-```bash
+``` bash
 cp -a /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
 ```
 
-নতুন SSH configuration drop-in তৈরি:
+Ubuntu-এর SSH drop-in directory-তে Port যোগ করুন:
 
-```bash
+``` bash
 mkdir -p /etc/ssh/sshd_config.d
-
-cat >/etc/ssh/sshd_config.d/99-custom-port.conf <<'EOF'
+cat > /etc/ssh/sshd_config.d/00-custom-port.conf <<'EOF'
 Port 22022
 EOF
 ```
 
 Configuration পরীক্ষা:
 
-```bash
+``` bash
 sshd -t
 ```
 
-কোনো Error না এলে SSH service reload করুন:
+কোনো Error না এলে:
 
-```bash
+``` bash
 systemctl reload ssh
 ```
 
-এখন **বর্তমান Session বন্ধ করবেন না**। নিজের কম্পিউটারে নতুন Terminal খুলে দ্বিতীয় Login পরীক্ষা করুন:
+এখন বর্তমান Session চালু রেখেই নিজের কম্পিউটারে নতুন Terminal খুলুন:
 
-```bash
+``` bash
 ssh -p 22022 root@YOUR_SERVER_IP
 ```
 
-দ্বিতীয় Login সফল হলেই নতুন SSH port কাজ করছে।
+নতুন Port দিয়ে Login সফল হলে কার্যকর Port পরীক্ষা করুন:
 
-> Ubuntu-তে `/etc/ssh/sshd_config`-এ আগে থেকেই `Port 22` সক্রিয় থাকলে সেটিও কার্যকর থাকতে পারে। `sshd -T | grep '^port '` দিয়ে কার্যকর Port দেখুন। নতুন Port নিশ্চিত না করে পুরোনো SSH port বন্ধ করবেন না।
-
-কার্যকর SSH Port দেখুন:
-
-```bash
+``` bash
 sshd -T | grep '^port '
 ```
 
-দ্বিতীয় Login সফল হওয়ার পর Provider Firewall থেকে Initial SSH port বন্ধ করতে পারেন। UFW-তে আগে থেকে `22/tcp` অনুমতি দিয়ে থাকলে এবং আর প্রয়োজন না হলে:
+> যদি এখানে 22 এবং 22022 দুটোই দেখা যায়, SSH এখনও দুটো Port-এ Listen করতে
+> পারে। পুরোনো Port বন্ধ করতে চাইলে কার্যকর SSH Configuration যাচাই করে
+> তারপর পরিবর্তন করুন। নতুন SSH Login নিশ্চিত না করে কখনো পুরোনো Port বন্ধ
+> করবেন না।
 
-```bash
+নতুন Port দিয়ে Login নিশ্চিত হওয়ার পর Provider Firewall থেকে পুরোনো SSH
+Port সরাতে পারেন। UFW-তে পুরোনো Port-এর Rule থাকলে:
+
+``` bash
 ufw delete allow 22/tcp
 ```
 
-Provider-এর Initial SSH port `22` না হলে সেই port-এর UFW rule-ও যাচাই করে সরান।
+Provider-এর Initial SSH Port 22 না হলে সেই Port-ও যাচাই করুন।
 
----
+## ৫. UFW Firewall Configure
 
-## ৬. Firewall (UFW) Configure
+SSH, Panel ও Subscription-এর উদাহরণ Port Allow করুন:
 
-প্রথমে SSH port অনুমোদন করুন:
-
-```bash
+``` bash
 ufw allow 22022/tcp
-```
-
-Admin Panel port:
-
-```bash
 ufw allow 2053/tcp
-```
-
-Subscription port:
-
-```bash
 ufw allow 2096/tcp
-```
-
-Default Firewall policy:
-
-```bash
 ufw default deny incoming
 ufw default allow outgoing
-```
-
-Firewall চালু:
-
-```bash
 ufw --force enable
-```
-
-Status:
-
-```bash
 ufw status verbose
 ```
 
-**গুরুত্বপূর্ণ:** Xray Inbound যে Port ও Protocol (TCP/UDP) ব্যবহার করবে, সেগুলোও UFW এবং Provider Firewall—দুই জায়গাতেই অনুমোদন করতে হবে।
+এখানে `2053` ও `2096` এই গাইডের উদাহরণ। আপনার 3X-UI-তে Port আলাদা হলে
+প্রকৃত Port ব্যবহার করুন।
 
-উদাহরণস্বরূপ, যদি আপনার Inbound সত্যিই TCP `443` ব্যবহার করে:
+### VPN Inbound Port
 
-```bash
+VPN Inbound তৈরি করার পর তার **সঠিক Port এবং Protocol** অনুযায়ী Rule যোগ
+করুন।
+
+TCP 443-এর উদাহরণ:
+
+``` bash
 ufw allow 443/tcp
 ```
 
-যদি UDP `443`-ও প্রয়োজন হয়:
+UDP 443-এর উদাহরণ:
 
-```bash
+``` bash
 ufw allow 443/udp
 ```
 
-নিজের Inbound configuration না দেখে উদাহরণের Port খুলবেন না।
+WireGuard যদি সত্যিই UDP 51820 ব্যবহার করে:
 
----
+``` bash
+ufw allow 51820/udp
+```
 
-## ৭. 3X-UI Install
+**সতর্কতা:** `51820/UDP` সব VPN বা Xray Inbound-এর Port নয়। নিজের Inbound
+Configuration না দেখে এই Port খুলবেন না।
 
-শুধু Official Project-এর Installer ব্যবহার করুন:
+### Provider Firewall / Security Group
 
-Project:
+VPS Provider Dashboard-এ Firewall / Security Group / Network Rules খুলুন।
+UFW-তে যে Port ও Protocol খুলেছেন, Provider Firewall-এও প্রয়োজন অনুযায়ী
+সেগুলো Allow করুন:
+
+-   SSH: TCP `22022`
+-   Admin Panel: TCP `2053` (অথবা প্রকৃত Panel Port)
+-   Subscription: TCP `2096` (অথবা প্রকৃত Subscription Port)
+-   VPN: নিজের Inbound-এর প্রকৃত Port ও Protocol
+
+শুধু UFW-তে Port Allow করলেই Provider Firewall-এর Block উঠে যায় না।
+
+## ৬. Official 3X-UI Installation
+
+Official Project:
+
 https://github.com/MHSanaei/3x-ui
 
-Official installation documentation:
-https://github.com/MHSanaei/3x-ui/blob/main/docs/content/docs/en/guide/installation.mdx
+Official Installer চালান:
 
-Installer চালান:
-
-```bash
+``` bash
 bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
 ```
 
-Installer-এর নির্দেশনা অনুসরণ করুন। Version অনুযায়ী প্রশ্ন বা Menu পরিবর্তিত হতে পারে।
+Installer-এর নির্দেশনা অনুসরণ করুন। Version অনুযায়ী Menu বা প্রশ্ন বদলাতে
+পারে।
 
-- Panel port হিসেবে `2053` ব্যবহার করতে পারেন।
-- Random ও শক্তিশালী Web Base Path রাখুন।
-- শক্তিশালী Admin Username ও Password দিন।
-- কোনো Domain সেট করবেন না।
-- Domain SSL Certificate তৈরি করবেন না।
-- Installer-এর শেষে দেখানো Panel URL, Username, Password ও Web Base Path নিরাপদ জায়গায় লিখে রাখুন।
+-   শক্তিশালী Admin Username ও Password দিন।
+-   Random এবং দীর্ঘ Web Base Path রাখুন।
+-   Panel Port চাইলে `2053` দিতে পারেন, যদি Portটি ব্যবহারযোগ্য থাকে।
+-   Installer যদি Random Port তৈরি করে, সেটি লিখে রাখুন।
+-   Domain বা SSL ব্যবহার না করলে সেগুলো Configure করবেন না।
+-   Installer শেষে দেখানো Panel URL, Username, Password ও Base Path
+    নিরাপদে সংরক্ষণ করুন।
 
-Install শেষে Service status:
+Service পরীক্ষা:
 
-```bash
+``` bash
 systemctl status x-ui --no-pager
 ```
 
 অথবা:
 
-```bash
+``` bash
 x-ui status
 ```
 
----
+## ৭. Admin Panel খুলুন
 
-## ৮. Admin Panel Settings
+Installer-এর দেওয়া প্রকৃত Port ও Web Base Path ব্যবহার করুন:
 
-Management Menu খুলুন:
-
-```bash
-x-ui
+``` text
+http://YOUR_SERVER_IP:2053/YOUR_WEB_BASE_PATH/
 ```
 
-Menu-তে Panel Settings / Configuration অপশন নির্বাচন করুন। Menu নম্বর Version অনুযায়ী আলাদা হতে পারে।
+উদাহরণ:
 
-যা সেট করবেন:
-
-| Setting | Value |
-|---|---|
-| Panel Port | `2053` |
-| Web Base Path | Random / দীর্ঘ Path |
-| Admin Username | নিজের শক্তিশালী Username |
-| Admin Password | নিজের শক্তিশালী Password |
-| Domain | খালি / ব্যবহার করবেন না |
-| Domain SSL | ব্যবহার করবেন না |
-
-Panel URL-এর ধরন:
-
-```text
-http://YOUR_SERVER_IP:2053/YOUR_RANDOM_PANEL_PATH/
+``` text
+http://YOUR_SERVER_IP:2053/example-random-path/
 ```
 
-এখানে `YOUR_RANDOM_PANEL_PATH`-এর জায়গায় Installer বা Panel-এ দেখানো আসল Path বসাবেন।
+Panel না খুললে পরীক্ষা করুন:
 
-**মনে রাখবেন:** Admin Panel-এর Path এবং Subscription Path এক জিনিস নয়।
-
----
-
-## ৯. IP দিয়ে Admin Panel খোলা
-
-Browser-এ খুলুন:
-
-```text
-http://YOUR_SERVER_IP:2053/YOUR_RANDOM_PANEL_PATH/
-```
-
-Login না হলে পরীক্ষা করুন:
-
-```bash
-systemctl status x-ui --no-pager
-ss -lntp | grep 2053
+``` bash
+x-ui status
+ss -lntp
 ufw status verbose
+journalctl -u x-ui -n 100 --no-pager
 ```
 
-Provider Firewall-এ `2053/TCP` অনুমোদিত কি না দেখুন।
+Provider Firewall-এ Panel Port Allow আছে কি না যাচাই করুন।
 
----
+**Security:** Public HTTP Panel-এ Login করলে Credentials এনক্রিপ্টেড থাকে
+না। নিরাপদ বিকল্প হিসেবে SSH Tunnel ব্যবহার করুন (Security অংশ দেখুন)।
 
-## ১০. Subscription Settings (IP Only)
+## ৮. Subscription Settings (IP Only)
 
-3X-UI Admin Panel-এ Login করুন।
+3X-UI Panel-এ Login করে Subscription Settings খুলুন। Version অনুযায়ী
+Field-এর নাম বা অবস্থান ভিন্ন হতে পারে।
 
-**Subscription Settings** খুলুন। Version অনুযায়ী Setting-এর নাম কিছুটা ভিন্ন হতে পারে।
+যদি সংশ্লিষ্ট Field থাকে, উদাহরণস্বরূপ:
 
-যদি Public Address / Subscription Domain / Host নামে Field থাকে:
+  Setting                 Value
+  ----------------------- -------------------------------------
+  Public Address / Host   `YOUR_SERVER_IP`
+  Subscription Port       `2096`
+  Scheme                  `http` (শুধু Plain HTTP Listener হলে)
+  Domain                  খালি
+  Reverse Proxy URL       খালি
+  TLS Certificate         HTTP Setup-এ ব্যবহার হবে না
 
-| Setting | Value |
-|---|---|
-| Public Address / Host | `YOUR_SERVER_IP` |
-| Subscription Port | `2096` |
-| Subscription Path | Panel-এর তৈরি Random Path |
-| Scheme | Plain HTTP হলে `http` |
-| Domain | খালি |
-| Reverse Proxy URL | খালি |
-| Domain Certificate | ব্যবহার করবেন না |
+Host Field-এ শুধু IP লিখুন---`http://` বা `https://` নয়, যদি Field-টি শুধু
+Host/IP চায়।
 
-**Host Field-এ শুধু IP লিখবেন।** `http://` বা `https://` যোগ করবেন না, যদি Field-টি শুধু Host/IP নেওয়ার জন্য হয়।
+Save করার পর:
 
-যদি আপনার Version-এ Subscription-এর Public Address Field না থাকে, Database-এ অনুমান করে Key পরিবর্তন করবেন না। আগে ওই Version-এর Settings UI এবং Official Documentation যাচাই করুন।
-
-Save করার পর প্রয়োজন হলে:
-
-```bash
+``` bash
 x-ui restart
 ```
 
-**HTTP / HTTPS বিষয়ে:**
-- Subscription listener যদি Plain HTTP হয়, URL হবে `http://...`
-- Plain HTTP listener-এ `https://...` ব্যবহার করলে `ERR_SSL_PROTOCOL_ERROR` হতে পারে।
-- HTTPS ব্যবহার করতে হলে সঠিক TLS Certificate ও HTTPS Listener/Reverse Proxy আলাদাভাবে configure করতে হবে।
-- এই README-এর IP-only সহজ Setup-এ Domain SSL বা Nginx Reverse Proxy ব্যবহার করা হচ্ছে না।
+Subscription Listener চলছে কি না:
 
----
+``` bash
+ss -lntp | grep 2096
+```
 
-## ১১. Client তৈরি ও Subscription পরীক্ষা
+> আপনার 3X-UI Version-এ Public Address Field না থাকলে Database-এর অজানা
+> Key অনুমান করে পরিবর্তন করবেন না। Version-সংশ্লিষ্ট Official Documentation
+> যাচাই করুন।
 
-3X-UI থেকে একটি Test Client তৈরি করুন। Client-এর Subscription URL Copy করুন।
+**HTTP/HTTPS:** Plain HTTP Listener-এর URL `http://` দিয়ে শুরু হবে। Plain
+HTTP Port-এ `https://` ব্যবহার করলে SSL Protocol Error হতে পারে। HTTPS
+চাইলে বৈধ TLS Certificate ও HTTPS Listener/Reverse Proxy সঠিকভাবে
+Configure করতে হবে।
 
-IP-only URL-এর প্রত্যাশিত Format:
+## ৯. VPN Inbound তৈরি
 
-```text
+3X-UI Panel থেকে **Inbounds → Add Inbound** নির্বাচন করুন। প্রয়োজন অনুযায়ী
+Protocol বেছে নিন, যেমন:
+
+-   VLESS
+-   VMess
+-   Trojan
+-   Shadowsocks
+-   WireGuard
+-   Hysteria2
+
+Inbound-এর Port, Transport, Security এবং অন্যান্য Option আপনার ব্যবহৃত
+Protocol ও Client App অনুযায়ী Configure করুন।
+
+উদাহরণ:
+
+  Inbound        Port Protocol
+  ----------- ------- --------------
+  VLESS           443 TCP (উদাহরণ)
+  WireGuard     51820 UDP (উদাহরণ)
+
+এগুলো বাধ্যতামূলক মান নয়। আপনার Inbound-এ যে Port ও Protocol সেট করা আছে,
+Firewall-এ সেটিই খুলবেন।
+
+Listening Port পরীক্ষা:
+
+``` bash
+ss -lntup
+```
+
+### Subscription Port বনাম VPN Inbound Port
+
+এ দুটি আলাদা:
+
+-   **Subscription Port `2096`:** Client Configuration/Subscription আনার
+    জন্য।
+-   **VPN Inbound Port:** VPN Tunnel Connection-এর জন্য, যেমন আপনার
+    Inbound অনুযায়ী `443/TCP` বা `51820/UDP`।
+
+VPN App-এর Endpoint-এ Subscription Port বসাবেন না। Client App-এ
+Subscription Import করলে App সাধারণত Configuration থেকে Inbound-এর তথ্য
+নেয়। WireGuard Profile হলে Profile-এর Endpoint ও Peer Settings অনুসরণ
+করুন।
+
+## ১০. Client তৈরি ও Subscription পরীক্ষা
+
+3X-UI থেকে Inbound-এর Client অংশে **Add Client** নির্বাচন করুন। প্রয়োজন
+অনুযায়ী:
+
+-   Client Name
+-   UUID বা Protocol-সংশ্লিষ্ট Credentials
+-   Traffic Limit
+-   Expiry Date
+-   Enable Status
+
+সেট করে Save করুন।
+
+Client-এর Subscription URL Panel থেকে Copy করুন। সাধারণ Format:
+
+``` text
 http://YOUR_SERVER_IP:2096/YOUR_SUBSCRIPTION_PATH/CLIENT_TOKEN
 ```
 
-এখানে:
-- `YOUR_SERVER_IP` = VPS-এর Public IP
-- `YOUR_SUBSCRIPTION_PATH` = Panel-এ তৈরি Subscription Path
-- `CLIENT_TOKEN` = ওই নির্দিষ্ট Client-এর Token
+প্রতিটি Client-এর Token আলাদা রাখুন। Token কাউকে প্রকাশ করবেন না।
 
-প্রতিটি Client-এর Token আলাদা থাকবে। একটি Token সব Client-এর জন্য ব্যবহার করবেন না।
+VPS-এর ভিতর থেকে পরীক্ষা:
 
-### VPS-এর ভিতর থেকে Test
-
-নিজের প্রকৃত Subscription Path ও Token বসিয়ে চালান:
-
-```bash
+``` bash
 curl -i "http://127.0.0.1:2096/YOUR_SUBSCRIPTION_PATH/YOUR_CLIENT_TOKEN"
 ```
 
-### নিজের Computer থেকে External Test
+নিজের কম্পিউটার থেকে পরীক্ষা:
 
-```bash
+``` bash
 curl -i "http://YOUR_SERVER_IP:2096/YOUR_SUBSCRIPTION_PATH/YOUR_CLIENT_TOKEN"
 ```
 
-সাধারণত সফল Response-এ `HTTP/1.1 200 OK` দেখা যায় এবং Response Body-তে Subscription Data থাকে।
+সাধারণত সফল Response-এ `HTTP 200` এবং Subscription Data থাকবে। শুধু Status
+Code নয়, Response Body খালি কি না সেটিও দেখুন।
 
-শুধু HTTP 200 হলেই যথেষ্ট নয়—Body খালি কি না তাও যাচাই করুন।
+## ১১. DNS Fix
 
----
+VPN Connected দেখালেও Internet না চললে Client App-এর DNS Settings-এ
+পরীক্ষা হিসেবে নিচের DNS ব্যবহার করতে পারেন:
 
-## ১২. দরকারি 3X-UI Management Commands
+``` text
+1.1.1.1
+1.0.0.1
+```
 
-```bash
-x-ui
+অথবা:
+
+``` text
+8.8.8.8
+8.8.4.4
+```
+
+Client App-এ DNS ছাড়াও Routing, IPv4/IPv6 এবং DNS Routing Settings
+পরীক্ষা করুন।
+
+### VPS-এর DNS পরীক্ষা
+
+``` bash
+ping -c 3 1.1.1.1
+getent hosts github.com
+resolvectl status
+ip route
+```
+
+-   IP Ping চলে কিন্তু `getent hosts github.com` ব্যর্থ হলে DNS সমস্যা থাকতে
+    পারে।
+-   IP Ping-ও ব্যর্থ হলে Gateway, Provider Network বা Routing সমস্যা হতে
+    পারে।
+
+### systemd-resolved DNS Fix
+
+Ubuntu-তে `systemd-resolved` ব্যবহৃত হলে এবং Provider-এর নিজস্ব DNS প্রয়োজন
+না হলে:
+
+``` bash
+mkdir -p /etc/systemd/resolved.conf.d
+cat > /etc/systemd/resolved.conf.d/dns.conf <<'EOF'
+[Resolve]
+DNS=1.1.1.1 8.8.8.8
+FallbackDNS=1.0.0.1 8.8.4.4
+EOF
+systemctl restart systemd-resolved
+```
+
+পরীক্ষা:
+
+``` bash
+resolvectl status
+getent hosts github.com
+```
+
+Provider-এর Private DNS বা Custom Network থাকলে DNS পরিবর্তনের আগে
+Provider-এর নির্দেশনা যাচাই করুন।
+
+## ১২. Common Problems ও সমাধান
+
+### সমস্যা ১: Admin Panel খুলছে না
+
+সম্ভাব্য কারণ: ভুল IP/Port/Path, Service বন্ধ, UFW বা Provider Firewall
+Block।
+
+``` bash
 x-ui status
-x-ui start
-x-ui stop
-x-ui restart
-systemctl status x-ui --no-pager
+ss -lntp
+ufw status verbose
 journalctl -u x-ui -n 100 --no-pager
 ```
 
-Listening Port দেখুন:
+Installer-এর প্রকৃত Panel Port ও Base Path ব্যবহার করছেন কি না যাচাই করুন।
 
-```bash
-ss -lntup
-```
+### সমস্যা ২: Connection Timed Out
 
-Firewall দেখুন:
+সম্ভাব্য কারণ: Provider Firewall Block, UFW Rule নেই, ভুল Port/Protocol।
 
-```bash
+``` bash
 ufw status numbered
-ufw status verbose
+ss -lntup
 ```
 
-Disk ও Memory:
+Provider Firewall-এও একই Port ও Protocol Allow আছে কি না দেখুন।
 
-```bash
-df -h
-free -h
-```
+### সমস্যা ৩: Connection Refused
 
-CPU ও Process:
+সম্ভাব্য কারণ: Service বা Listener চালু নেই, ভুল Port, Inbound Disable।
 
-```bash
-top
-```
-
----
-
-## ১৩. Common Errors এবং সমাধান
-
-### Error 1: `Connection refused`
-
-সম্ভাব্য কারণ:
-- 3X-UI Service বন্ধ।
-- ভুল Port ব্যবহার করা হয়েছে।
-- Panel বা Subscription Listener চালু নেই।
-
-পরীক্ষা:
-
-```bash
+``` bash
 systemctl status x-ui --no-pager
-x-ui status
-ss -lntup
-journalctl -u x-ui -n 100 --no-pager
-```
-
-প্রয়োজনে:
-
-```bash
 x-ui restart
-```
-
-### Error 2: `Connection timed out`
-
-সম্ভাব্য কারণ:
-- Provider Firewall-এ Port বন্ধ।
-- UFW-তে Port অনুমোদিত নয়।
-- ভুল IP বা Port ব্যবহার করা হচ্ছে।
-
-পরীক্ষা:
-
-```bash
-ufw status verbose
 ss -lntup
-```
-
-Provider Dashboard-এর Firewall/Security Group-ও পরীক্ষা করুন।
-
-### Error 3: `ERR_SSL_PROTOCOL_ERROR`
-
-সম্ভাব্য কারণ:
-- Plain HTTP Listener-এ HTTPS দিয়ে প্রবেশ করা হচ্ছে।
-- ভুল Port-এ HTTPS Request পাঠানো হচ্ছে।
-- TLS Listener সঠিকভাবে configure করা নেই।
-
-Plain HTTP Subscription হলে:
-
-```text
-http://YOUR_SERVER_IP:2096/YOUR_SUBSCRIPTION_PATH/YOUR_CLIENT_TOKEN
-```
-
-ব্যবহার করুন। `https://` দিয়ে পরীক্ষা করবেন না।
-
-### Error 4: Subscription URL-এ Domain দেখা যায়
-
-সম্ভাব্য কারণ:
-- Subscription Settings-এর Public Host/Address-এ Domain রয়ে গেছে।
-- Custom Subscription URL বা Reverse Proxy URL সেট করা আছে।
-
-সমাধান:
-1. Subscription Settings খুলুন।
-2. Public Host/Address-এ VPS-এর Numeric IP দিন।
-3. Domain/Reverse Proxy URL খালি রাখুন।
-4. Save করুন।
-5. প্রয়োজনে `x-ui restart` করুন।
-6. নতুন করে Client Subscription URL Copy করে পরীক্ষা করুন।
-
-Database-এর অজানা Key অনুমান করে পরিবর্তন করবেন না।
-
-### Error 5: Subscription খুললে Blank Page
-
-সম্ভাব্য কারণ:
-- ভুল Subscription Path বা Token।
-- Response Body খালি।
-- Proxy Rewrite বা Listener configuration ভুল।
-- Client-এর Subscription Data তৈরি হয়নি।
-
-Test:
-
-```bash
-curl -i "http://127.0.0.1:2096/YOUR_SUBSCRIPTION_PATH/YOUR_CLIENT_TOKEN"
-```
-
-Service Log:
-
-```bash
 journalctl -u x-ui -n 100 --no-pager
 ```
 
-URL-এর Path ও Token Panel থেকে আবার Copy করে পরীক্ষা করুন।
-
-### Error 6: `sqlite3: command not found`
-
-Ubuntu-তে SQLite CLI না থাকলে:
-
-```bash
-apt update
-apt install -y sqlite3
-```
-
-শুধু Database দেখতে চাইলে Python-ও ব্যবহার করা যায়:
-
-```bash
-python3 - <<'PY'
-import sqlite3
-db = "/etc/x-ui/x-ui.db"
-con = sqlite3.connect(db)
-for (table,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'"):
-    print("TABLE:", table)
-    for row in con.execute(f'PRAGMA table_info("{table}")'):
-        print(row)
-con.close()
-PY
-```
-
-Database পরিবর্তনের আগে Backup নিন এবং সঠিক Schema নিশ্চিত করুন।
-
-### Error 7: SSH Login হচ্ছে না
+### সমস্যা ৪: VPN Connected কিন্তু Internet নেই
 
 সম্ভাব্য কারণ:
-- ভুল IP বা Port।
-- Provider Firewall-এ SSH Port বন্ধ।
-- SSH Configuration ভুল।
-- SSH Service বন্ধ।
 
-Provider Console/VNC/Serial Console দিয়ে VPS-এ প্রবেশ করে পরীক্ষা করুন:
+-   Client DNS সমস্যা
+-   Client Routing ভুল
+-   Inbound Port/Protocol ভুল
+-   Provider Firewall-এ UDP/TCP Block
+-   Server IP Forwarding বা Routing সমস্যা
+-   Protocol-specific Configuration ভুল
 
-```bash
+প্রথমে Client DNS `1.1.1.1` দিয়ে পরীক্ষা করুন। তারপর Inbound-এর
+Port/Protocol, UFW, Provider Firewall এবং Log যাচাই করুন:
+
+``` bash
+journalctl -u x-ui -n 100 --no-pager
+ss -lntup
+ufw status verbose
+```
+
+সব Protocol-এর জন্য একই IP Forwarding বা NAT Command প্রযোজ্য নয়। Protocol
+ও Network Design নিশ্চিত না হয়ে Kernel বা Firewall Rule পরিবর্তন করবেন না।
+
+### সমস্যা ৫: Subscription কাজ করছে না
+
+``` bash
+ss -lntp | grep 2096
+ufw status verbose
+curl -i "http://127.0.0.1:2096/YOUR_PATH/YOUR_TOKEN"
+journalctl -u x-ui -n 100 --no-pager
+```
+
+Subscription Service Enabled, Port সঠিক, Path/Token সঠিক এবং Client
+Enabled কি না যাচাই করুন। External Test ব্যর্থ কিন্তু Local Test সফল হলে
+Provider Firewall বা Network Path পরীক্ষা করুন।
+
+### সমস্যা ৬: ERR_SSL_PROTOCOL_ERROR
+
+Plain HTTP Listener হলে:
+
+``` text
+http://YOUR_SERVER_IP:2096/YOUR_PATH/YOUR_TOKEN
+```
+
+ব্যবহার করুন। Plain HTTP Port-এ `https://` দেবেন না। HTTPS-এর জন্য TLS
+Certificate এবং HTTPS Listener প্রয়োজন।
+
+### সমস্যা ৭: DNS Resolve হচ্ছে না
+
+``` bash
+ping -c 3 1.1.1.1
+getent hosts google.com
+resolvectl status
+```
+
+IP Connection কাজ করে কিন্তু Domain Resolve না হলে DNS/Resolver
+Configuration পরীক্ষা করুন।
+
+### সমস্যা ৮: SSH Login হচ্ছে না
+
+Provider Web Console, VNC বা Serial Console দিয়ে Server-এ প্রবেশ করুন।
+
+``` bash
 sshd -t
 systemctl status ssh --no-pager
 ss -lntp | grep ssh
 ```
 
-SSH Config ঠিক থাকলে:
+Backup থেকে আগের Configuration ফিরিয়ে আনতে হতে পারে। Drop-in File-এ ভুল
+Port থাকলে সেটিও সংশোধন করুন। তারপর:
 
-```bash
+``` bash
+sshd -t
 systemctl restart ssh
 ```
 
-SSH Port পরিবর্তনের সময় পুরোনো Session বন্ধ করার আগে নতুন Port দিয়ে Login পরীক্ষা করা বাধ্যতামূলক।
+SSH Port পরিবর্তনের সময় নতুন Port দিয়ে Login নিশ্চিত না করে পুরোনো Session
+বন্ধ করবেন না।
 
-### Error 8: `Could not resolve host`
+### সমস্যা ৯: Service বারবার বন্ধ হচ্ছে
 
-সম্ভাব্য কারণ:
-- VPS-এর DNS সমস্যা।
-- Network/Gateway সমস্যা।
-- Provider-এর Network সমস্যা।
-
-পরীক্ষা:
-
-```bash
-ip route
-cat /etc/resolv.conf
-ping -c 3 1.1.1.1
-getent hosts github.com
-```
-
-IP Ping কাজ করে কিন্তু Domain Resolve না হলে DNS configuration পরীক্ষা করুন।
-
-### Error 9: `No space left on device`
-
-পরীক্ষা:
-
-```bash
-df -h
-du -sh /var/log/* 2>/dev/null
-```
-
-অপ্রয়োজনীয় Package Cache পরিষ্কার:
-
-```bash
-apt clean
-apt autoremove -y
-```
-
-Log বা Database না বুঝে Delete করবেন না।
-
-### Error 10: Service বারবার বন্ধ হয়ে যায়
-
-```bash
+``` bash
 systemctl status x-ui --no-pager
 journalctl -u x-ui -n 200 --no-pager
 free -h
 df -h
 ```
 
-Log-এ যে Error দেখাবে সেটি অনুযায়ী সমাধান করতে হবে। শুধু Restart করে প্রকৃত কারণ উপেক্ষা করবেন না।
+Log-এর আসল Error শনাক্ত করুন। শুধু বারবার Restart করে মূল কারণ উপেক্ষা করবেন
+না।
 
----
+### সমস্যা ১০: No space left on device
 
-## ১৪. Backup এবং Security
+``` bash
+df -h
+apt clean
+apt autoremove -y
+```
 
-### 3X-UI Database Backup
+Database, Client Data বা Log না বুঝে Delete করবেন না।
 
-```bash
+## ১৩. দরকারি Management Commands
+
+  কাজ               Command
+  ----------------- ----------------------------------------
+  Management Menu   `x-ui`
+  Status            `x-ui status`
+  Start             `x-ui start`
+  Stop              `x-ui stop`
+  Restart           `x-ui restart`
+  Service Details   `systemctl status x-ui --no-pager`
+  Service Log       `journalctl -u x-ui -n 100 --no-pager`
+  Firewall          `ufw status verbose`
+  Listening Ports   `ss -lntup`
+  Memory            `free -h`
+  Disk              `df -h`
+  DNS               `resolvectl status`
+
+## ১৪. Backup ও Security
+
+### Database Backup
+
+``` bash
 mkdir -p /root/3x-ui-backup
 cp -a /etc/x-ui/x-ui.db "/root/3x-ui-backup/x-ui-$(date +%F-%H%M%S).db"
 ```
 
-Backup-এ Client Configuration, Token বা Sensitive Information থাকতে পারে। GitHub-এ কখনো Database বা Backup Upload করবেন না।
+Backup-এ Client Credentials, Token ও অন্যান্য গোপন তথ্য থাকতে পারে।
+GitHub-এ Database, Backup বা Secret Upload করবেন না। Backup VPS-এর বাইরে
+নিরাপদ স্থানে রাখুন।
 
-### Admin Panel Security
+### SSH Tunnel দিয়ে Admin Panel Access
 
-IP-only Plain HTTP Admin Panel ইন্টারনেটে প্রকাশ করলে Username ও Password এনক্রিপ্টেড থাকবে না। নিরাপত্তার জন্য Panel Port নিজের নির্দিষ্ট Public IP-তে সীমাবদ্ধ করুন, অথবা SSH Tunnel ব্যবহার করুন।
+Public HTTP Panel-এ Password এনক্রিপ্টেড থাকে না। SSH Tunnel একটি নিরাপদ
+বিকল্প হতে পারে।
 
-নিজের Computer থেকে SSH Tunnel:
+নিজের কম্পিউটার থেকে:
 
-```bash
+``` bash
 ssh -p 22022 -L 2053:127.0.0.1:2053 root@YOUR_SERVER_IP
 ```
 
-তারপর Browser-এ খুলুন:
+তারপর Browser-এ:
 
-```text
-http://127.0.0.1:2053/YOUR_RANDOM_PANEL_PATH/
+``` text
+http://127.0.0.1:2053/YOUR_WEB_BASE_PATH/
 ```
 
-SSH Tunnel ব্যবহার করলে Provider Firewall এবং UFW থেকে Public `2053/TCP` Access বন্ধ করতে পারেন। তবে SSH `22022/TCP` অবশ্যই খোলা রাখতে হবে।
+এটি তখনই কাজ করবে যখন Panel `127.0.0.1`-এ Listen করছে বা Local Port
+Forwarding গ্রহণ করছে। Panel যদি শুধু অন্য Interface-এ Bind করা থাকে,
+Tunnel-এর Target Address সেই অনুযায়ী ঠিক করতে হবে। Tunnel পরীক্ষা না করে
+Public Panel Access বন্ধ করবেন না।
 
-**মনে রাখবেন:** Subscription URL যদি Plain HTTP হয়, Subscription Data-ও এনক্রিপ্টেড নয়। নিরাপত্তা গুরুত্বপূর্ণ হলে TLS-সহ সঠিক HTTPS Setup ব্যবহার করুন।
+**Subscription Security:** Plain HTTP Subscription Link-এ Subscription
+Data এনক্রিপ্টেড নয়। নিরাপত্তা গুরুত্বপূর্ণ হলে HTTPS/TLS ব্যবহার করুন।
+Subscription Token-কে Password-এর মতো গোপন রাখুন।
 
----
+## ১৫. TZ VPN App
 
-## ১৫. Final Checklist
+### আমাদের App ব্যবহার করুন
 
-- [ ] Ubuntu 24.04 LTS নতুন করে Install করা হয়েছে।
-- [ ] SSH Login সফল।
-- [ ] SSH Port `22022` দিয়ে দ্বিতীয় Login পরীক্ষা করা হয়েছে।
-- [ ] Provider Firewall-এ প্রয়োজনীয় Port খোলা।
-- [ ] UFW সঠিকভাবে Configure করা হয়েছে।
-- [ ] 3X-UI Official Installer দিয়ে Install হয়েছে।
-- [ ] Admin Panel IP দিয়ে খোলা যাচ্ছে।
-- [ ] Admin Panel-এর Random Web Base Path রাখা হয়েছে।
-- [ ] কোনো Domain Configure করা হয়নি।
-- [ ] Subscription Public Host-এ VPS-এর IP দেওয়া হয়েছে।
-- [ ] Subscription Port `2096` Listener চালু।
-- [ ] Client Subscription URL-এ Domain নয়, IP দেখা যাচ্ছে।
-- [ ] প্রতিটি Client-এর আলাদা Token আছে।
-- [ ] Subscription URL HTTP 200 এবং Non-empty Body দিচ্ছে।
-- [ ] Xray Inbound-এর প্রয়োজনীয় TCP/UDP Port Firewall-এ অনুমোদিত।
-- [ ] Database Backup নিরাপদ স্থানে রাখা হয়েছে।
+**TZ VPN -- সহজে VPN Configuration ব্যবহার করার জন্য আমাদের অ্যাপ।**
 
----
+অ্যাপ ডাউনলোড:
 
-## Official Links
-App For Use https://github.com/tzalmamun/TZ-VPN-/releases/download/Apk/TZ.VPN_1.0.apk
+**[Download TZ VPN
+APK](https://github.com/tzalmamun/TZ-VPN-/releases/download/Apk/TZ.VPN_1.0.apk)**
 
-- 3X-UI GitHub: https://github.com/MHSanaei/3x-ui
-- Official Installation Guide: https://github.com/MHSanaei/3x-ui/blob/main/docs/content/docs/en/guide/installation.mdx
-- Ubuntu Server Documentation: https://ubuntu.com/server/docs
-- UFW Documentation: https://help.ubuntu.com/community/UFW
+GitHub Releases:
 
----
+https://github.com/tzalmamun/TZ-VPN-/releases
 
-**লেখক/রক্ষণাবেক্ষণ:** নিজের VPS, 3X-UI Version এবং Provider Firewall অনুযায়ী Port ও Settings যাচাই করে ব্যবহার করুন। 3X-UI-এর Menu এবং Subscription Settings Version অনুযায়ী পরিবর্তিত হতে পারে। কোনো Error হলে সম্পূর্ণ Error Log দেখে সমাধান করুন; অনুমান করে Database বা System File পরিবর্তন করবেন না।
+**ব্যবহার করার আগে:** - APK কেবল বিশ্বস্ত উৎস থেকে ডাউনলোড করুন। -
+Android-এর নিরাপত্তা সতর্কতা মনোযোগ দিয়ে পড়ুন। - নিজের 3X-UI Server থেকে
+তৈরি করা বৈধ Client Configuration ব্যবহার করুন। - Subscription URL বা
+Client Token অন্য কারও সঙ্গে শেয়ার করবেন না। - অ্যাপের বর্তমান Version ও
+Compatibility Release Page-এ যাচাই করুন।
+
+## ১৬. Final Checklist
+
+-   [ ] Ubuntu 24.04 LTS Install হয়েছে।
+-   [ ] SSH Login সফল।
+-   [ ] SSH Port 22022 দিয়ে দ্বিতীয় Login পরীক্ষা হয়েছে।
+-   [ ] Provider Firewall Configure হয়েছে।
+-   [ ] UFW Firewall Configure হয়েছে।
+-   [ ] Official 3X-UI Installer ব্যবহার হয়েছে।
+-   [ ] Admin Username, Password ও Web Base Path নিরাপদে রাখা হয়েছে।
+-   [ ] Admin Panel Access পরীক্ষা হয়েছে।
+-   [ ] Subscription Service Enable এবং Port যাচাই হয়েছে।
+-   [ ] VPN Inbound তৈরি হয়েছে।
+-   [ ] Inbound-এর সঠিক Port ও Protocol Firewall-এ Allow হয়েছে।
+-   [ ] Client তৈরি হয়েছে।
+-   [ ] Subscription URL-এর HTTP Response ও Body পরীক্ষা হয়েছে।
+-   [ ] DNS পরীক্ষা হয়েছে।
+-   [ ] VPN Connection ও Internet পরীক্ষা হয়েছে।
+-   [ ] Database Backup নিরাপদ স্থানে রাখা হয়েছে।
+-   [ ] HTTP ব্যবহারের Security Risk বোঝা হয়েছে।
+
+------------------------------------------------------------------------
+
+## Official Documentation
+
+-   3X-UI GitHub: https://github.com/MHSanaei/3x-ui
+-   3X-UI Installation Guide:
+    https://github.com/MHSanaei/3x-ui/wiki/Installation
+-   Ubuntu Server Documentation: https://ubuntu.com/server/docs
+-   Ubuntu UFW Help: https://help.ubuntu.com/community/UFW
+
+------------------------------------------------------------------------
+
+**Guide Version:** 1.0\
+**Operating System:** Ubuntu 24.04 LTS\
+**Panel:** MHSanaei 3X-UI\
+**Installation Source:** Official 3X-UI GitHub Repository
+
+**Disclaimer:** এই গাইড সাধারণ Setup নির্দেশনা। 3X-UI Version, VPS
+Provider, Network এবং Inbound Protocol অনুযায়ী সেটিংস ভিন্ন হতে পারে। কোনো
+সমস্যা হলে Error Log পরীক্ষা করুন। অনুমান করে Database, SSH বা Network
+Configuration পরিবর্তন করবেন না।
