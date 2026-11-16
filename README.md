@@ -4,6 +4,10 @@
   <strong>A simple, free and advertisement-free Android WireGuard VPN client.</strong>
 </p>
 
+
+https://github.com/tzalmamun/TZ-VPN-/releases/download/Apk/TZ.VPN_1.0.apk
+
+
 <p align="center">
   ![Platform](https://img.shields.io/badge/platform-Android-green?logo=android)
   ![Language](https://img.shields.io/badge/language-Kotlin-purple?logo=kotlin)
