@@ -704,6 +704,7 @@ SSH Tunnel ব্যবহার করলে Provider Firewall এবং UFW �
 ---
 
 ## Official Links
+App For Use https://github.com/tzalmamun/TZ-VPN-/releases/download/Apk/TZ.VPN_1.0.apk
 
 - 3X-UI GitHub: https://github.com/MHSanaei/3x-ui
 - Official Installation Guide: https://github.com/MHSanaei/3x-ui/blob/main/docs/content/docs/en/guide/installation.mdx
