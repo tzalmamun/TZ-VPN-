@@ -1,0 +1,1 @@
+Add screenshots from the real TZ VPN app build here. Suggested names: home.png, add-tunnel.png, details.png, settings.png. Do not add screenshots containing private keys, QR codes, IP addresses, or other sensitive information.
